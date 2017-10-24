@@ -1,0 +1,12 @@
+Starting Log File 1
+reading goldrush values
+cound not find sim values goldrushvalues.txt
+reading salimghar values
+cound not find sim values salimgharvalues.txt
+reading MM values
+cound not find sim values mitmvalues.txt
+Loading track count
+Starting Velocity Log File 1
+Clearing clients
+Starting Simulation
+forking
