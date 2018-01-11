@@ -26,15 +26,9 @@
 #define WRITE_BLOCK_RETRY_COUNT     2
 
 #define INPUTPIN1   0
-#define INPUTPIN2   2
-#define INPUTPIN3   3
-#define INPUTPIN4   4
-
-
-#define INPUTPIN_ENABLE1   21
-#define INPUTPIN_ENABLE2   22
-#define INPUTPIN_ENABLE3   23
-#define INPUTPIN_ENABLE4   24
+#define INPUTPIN2   1
+#define INPUTPIN3   2
+#define INPUTPIN4   3
 
 //#define va_end(ap)              (void) 0
 //#define va_start(ap, A)         (void) ((ap) = (((char *) &(A)) + (_bnd (A,_AUPBND))))
@@ -76,6 +70,19 @@
 #define SERVER_STATUS_CODE_TYPE_SIM_STARTED     1
 
 
+#define APP_COMMAND_TYPE_SHUTDOWN_SERVER            'E'
+#define APP_COMMAND_TYPE_STOP_SERVER                'S'
+#define APP_COMMAND_TYPE_GET_STATUS                 'P'
+#define APP_COMMAND_TYPE_GET_LOCATION               'I'
+#define APP_COMMAND_TYPE_GET_CONNECTED_CLIENTS      'G'
+#define APP_COMMAND_TYPE_RESET_EXPERIENCE           'R'
+#define APP_COMMAND_TYPE_START_EXPERIENCE           'L'
+#define APP_COMMAND_TYPE_SWITCH_EXPERIENCE          'W'
+#define APP_COMMAND_TYPE_SWITCH_REALITY             'V'
+#define APP_COMMAND_TYPE_DISABLE_MEASUREMENT        'D'
+#define APP_COMMAND_TYPE_CALIBRATE_READING          'C'
+#define APP_COMMAND_TYPE_LOAD_CALIBRATION           'A'
+
 #define APP_COMMAND_STRING_SHUTDOWN_SERVER            "SHUTDOWN"
 #define APP_COMMAND_STRING_STOP_SERVER                "EXIT"
 #define APP_COMMAND_STRING_GET_STATUS                 "SETTING"
@@ -101,8 +108,6 @@
 #define APP_COMMAND_STRING_SET_DATE                   "DATE"
 #define APP_COMMAND_STRING_GET_VLOG                   "GETVLOG"
 #define APP_COMMAND_STRING_GET_VLOG_FILE_COUNT        "GETVLOGCOUNT"
-#define APP_COMMAND_STRING_SET_SENSORS_USED           "SETSENSORSUSED"
-#define APP_COMMAND_STRING_GET_SENSORS_USED           "GETSENSORSUSED"
 
 
 struct ClientStatus {
@@ -129,9 +134,6 @@ int ThisStateIsType(int ThisStat, int Type) {
     return ((ThisStat & 0x09) == (Type & 0x09));
 }
 
-int Sensors_Used=0x0F;
-float Sensors_Used_Count=4;
-
 int MITMSimValues[150000], MITMNOV, MITMTrackCount = 2335;
 float MITMIncrement = 0, MITMTrackLength = 100000.0;
 
@@ -144,7 +146,7 @@ float SalimGharIncrement = 0, SalimGharTrackLength = 267000.0;
 int InputPinLog[4][150000], InputPinLogPointer[4], InputPinLogPointerPrevious[4];
 char LogFilePath[30], pwd[30],VelocityLogFilePath[30];
 
-float Velocity_Graph[6][200],GoldRushVelocityIncrement;
+float Velocity_Graph[2][200],GoldRushVelocityIncrement;
 int Velocity_Graph_Calibration_Storage[200];
 float Velocity_Error_Feedback_Weight=0.1,Velocity_Correction_Limit_Upper,Velocity_Correction_Limit_Lower;
 int Velocity_Comparison[200];
@@ -158,8 +160,7 @@ int TranssferCount, OldManVideoTime = 0;
 
 struct sigaction InputSigAction, ServerSigAction;
 int ServerSocketFileDiscriptor, PortNumber = 1234, ClientCount = 0, MaximumFileDiscriptorID, ReUseSocket = 1, ConnectedClients = 0;
-int SimulationStartTime, RunStartTime = 0, PreviousTransmitTime, PreviousTime, PreviousLocation = 0, location,previous_location,location_difference=0;
-int cutoff_end_pulse=595,cutoff_velocity=45;
+int SimulationStartTime, RunStartTime = 0, PreviousTransmitTime, PreviousTime, PreviousLocation = 0, location,previous_location;
 struct sockaddr_in ServerAddress;
 struct timeval Timer_Variable;
 struct itimerval ServerTimer, InputTimer;
@@ -271,9 +272,6 @@ void InitVelocityLogFile(void) {
         lognumber = 0;
     }
     printspecial(1, "Starting Velocity Log File %d\n", lognumber++);
-    if(lognumber>1500){
-        lognumber=0;
-    }
     sprintf(VelocityLogFilePath, "vlog/vlog%d.txt", lognumber);
     Writer = fopen("vlog.txt", "w");
     fprintf(Writer, "%d\n", lognumber);
@@ -300,7 +298,6 @@ void InitVelocityGraph(void){
             Velocity_Comparison[i]=direction_pointer;
             Velocity_Graph_Calibration_Storage[i]=0;
         }
-        fscanf(Reader,"%d",&Sensors_Used);
     }else{
         Velocity_Graph_Size=0;
     }
@@ -309,7 +306,6 @@ void InitVelocityGraph(void){
     for (i = 0; i < 25; i++) {
         Velocity_Storage[i] = 0;
     }
-    
     InitVelocityLogFile();
     GoldRushVelocityIncrement=GoldRushIncrement;
 }
@@ -323,7 +319,6 @@ void StoreVelocityGraph(){
     for(i=0;i<Velocity_Graph_Size;i++){
         fprintf(Writer,"%f,%f,%d\n",Velocity_Graph[0][i],Velocity_Graph[1][i],Velocity_Comparison[i]);
     }
-    fprintf(Writer,"%d\n%f",Sensors_Used,Sensors_Used_Count);
     fclose(Writer);
 }
 
@@ -339,9 +334,6 @@ void InitLogFile(void) {
         lognumber = 0;
     }
     sprintf(LogFilePath, "log/log%d.txt", lognumber);
-    if(lognumber>500){
-        lognumber=0;
-    }
     printspecial(1, "Starting Log File %d\n", lognumber++);
     Writer = fopen("log.txt", "w");
     fprintf(Writer, "%d\n", lognumber);
@@ -401,7 +393,6 @@ void ResetInput() {
     InputPinLogPointer[2] = 0;
     InputPinLogPointer[3] = 0;
     location = 0;
-    location_difference=0;
     previous_location=0;
     while (location != -10) {
 
@@ -508,40 +499,6 @@ int ReadSimValues(char *path, int *SimValues) {
     return 0;
 }
 
-void Enable_Input_Lines(int new_sensor_settings){
-    int i;
-    Sensors_Used=new_sensor_settings;
-    Sensors_Used_Count=0;
-    for(i=1;i<0x10;i+=i){
-        if(Sensors_Used&i){
-            Sensors_Used_Count++;
-        }
-    }
-    cutoff_end_pulse=600*Sensors_Used_Count/4;
-    cutoff_velocity=44*Sensors_Used_Count/4;
-    if(Sensors_Used&0x01){
-        digitalWrite(INPUTPIN_ENABLE1,LOW);
-    }else{
-        digitalWrite(INPUTPIN_ENABLE1,HIGH);
-    }
-    if(Sensors_Used&0x02){
-        digitalWrite(INPUTPIN_ENABLE2,LOW);
-    }else{
-        digitalWrite(INPUTPIN_ENABLE2,HIGH);
-    }
-    if(Sensors_Used&0x04){
-        digitalWrite(INPUTPIN_ENABLE3,LOW);
-    }else{
-        digitalWrite(INPUTPIN_ENABLE3,HIGH);
-    }
-    if(Sensors_Used&0x08){
-        digitalWrite(INPUTPIN_ENABLE4,LOW);
-    }else{
-        digitalWrite(INPUTPIN_ENABLE4,HIGH);
-    }
-    StoreVelocityGraph();
-}
-
 int main(int argc, char *argv[]) {
     char InputString[600];
     int iterator;
@@ -623,11 +580,6 @@ int main(int argc, char *argv[]) {
     pinMode(INPUTPIN2, INPUT);
     pinMode(INPUTPIN3, INPUT);
     pinMode(INPUTPIN4, INPUT);
-    pinMode(INPUTPIN_ENABLE1, OUTPUT);
-    pinMode(INPUTPIN_ENABLE2, OUTPUT);
-    pinMode(INPUTPIN_ENABLE3, OUTPUT);
-    pinMode(INPUTPIN_ENABLE4, OUTPUT);
-    Enable_Input_Lines(Sensors_Used);
     if (InputThreadProcessId == 0) {
         int CurrentTime, sucks = 0;
         char Command[255];
@@ -843,13 +795,6 @@ int main(int argc, char *argv[]) {
                     }
                     break;
                 case SERVER_STATUS_CODE_RUNNING_RUN_GR:
-                    if(previous_location<cutoff_end_pulse){
-                        Velocity = location - Velocity_Storage[Velocity_Storage_Pointer]-location_difference;
-                        if(Velocity>cutoff_velocity){
-                            location_difference+=(Velocity-cutoff_velocity);
-                        }
-                    }
-                    location-=location_difference;
                     if(Velocity_Correction_Mode==1){
                         distance += GoldRushVelocityIncrement * (location-previous_location);
                     }else{
@@ -881,17 +826,14 @@ int main(int argc, char *argv[]) {
         FD_SET(ServerSocketFileDiscriptor, &ExceptFileDiscriptors);
         MaximumFileDiscriptorID = ServerSocketFileDiscriptor;
         if((Server_Status==SERVER_STATUS_CODE_RUNNING_RUN_GR)&&(Velocity_Correction_Mode==1)){
-            
             Velocity = location - Velocity_Storage[Velocity_Storage_Pointer];
             Velocity_Storage[Velocity_Storage_Pointer] = location;
             Velocity_Storage_Pointer = (Velocity_Storage_Pointer + 1) % 25;
             
             if (Velocity_Graph_Pointer < Velocity_Graph_Size - 1) {
-                float Correction_Velocity=Velocity_Graph[1][Velocity_Graph_Pointer];
-                Correction_Velocity=Correction_Velocity*((float)Sensors_Used_Count)/4.0;
-                if (((Velocity > Correction_Velocity)
+                if (((Velocity > Velocity_Graph[1][Velocity_Graph_Pointer])
                         &&(Velocity_Comparison[Velocity_Graph_Pointer] == 1))
-                        || ((Velocity < Correction_Velocity)
+                        || ((Velocity < Velocity_Graph[1][Velocity_Graph_Pointer])
                         &&(Velocity_Comparison[Velocity_Graph_Pointer] == 0))) {
                     float next_location_count = -1, error,ratio;
                     error = distance - (Velocity_Graph[0][Velocity_Graph_Pointer]);
@@ -1307,7 +1249,7 @@ void ProcessCommand(int ClientCount) {
             if (digitalRead(INPUTPIN4)) {
                 data |= 8;
             }
-            sprintf(Clients[ClientCount].Response, "Count=%d,distance=%f,vLocation=%d,Sensor=%d,Sensors_Used=%d\n", location, distance,Velocity_Graph_Pointer,data,Sensors_Used);
+            sprintf(Clients[ClientCount].Response, "Count=%d,distance=%f,vLocation=%d,Sensor=%d\n", location, distance,Velocity_Graph_Pointer,data);
         } else if (strcmp(Command, APP_COMMAND_STRING_GET_SENSOR) == 0) {
             
             if(Printed[6]==1){
@@ -1525,40 +1467,13 @@ void ProcessCommand(int ClientCount) {
                 Clients[ClientCount].DenyInput = 0;
         }else if (strcmp(Command,APP_COMMAND_STRING_ENABLE_CONTROL_PHONE)==0){
                 
-            if(Printed[21]==1){
+            if(Printed[20]==1){
                 continue;
             }
-            Printed[21]=1;
+            Printed[20]=1;
                 Clients[ClientCount].Previous_Check_Time=millis()-1000;
                 sprintf(Clients[ClientCount].Response, "Enabling Control Phone\n");
                 Clients[ClientCount].DenyInput = 2;
-        }else if (strcmp(Command,APP_COMMAND_STRING_SET_SENSORS_USED)==0){
-                
-            if(Printed[22]==1){
-                continue;
-            }
-            Printed[22]=1;
-            if (i <= strlen(Clients[ClientCount].Command)) {
-                int new_sensor_setting=0;
-                sscanf(Clients[ClientCount].Command + i, "%s", Parameters[0]);
-                i += strlen(Parameters[0]) + 1;
-                sscanf(Parameters[0],"%d",&new_sensor_setting);
-                if(new_sensor_setting==0){
-                    sprintf(Clients[ClientCount].Response, "Cannot disable all sensors\n");
-                }else if(new_sensor_setting==Sensors_Used){
-                    sprintf(Clients[ClientCount].Response, "Sensor setting unchanged\n");
-                }else {
-                    sprintf(Clients[ClientCount].Response, "Changing sensor setting to %d\n",new_sensor_setting);
-                    Enable_Input_Lines(new_sensor_setting);
-                }
-            }
-        }else if (strcmp(Command,APP_COMMAND_STRING_GET_SENSORS_USED)==0){
-                
-            if(Printed[23]==1){
-                continue;
-            }
-            Printed[23]=1;
-            sprintf(Clients[ClientCount].Response, "Sensors_Used=%d\n", Sensors_Used);
         }
         Clients[ClientCount].Response += strlen(Clients[ClientCount].Response);
         if(strlen(Clients[ClientCount].Response)>1000){
