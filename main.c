@@ -103,6 +103,15 @@
 #define APP_COMMAND_STRING_GET_VLOG_FILE_COUNT        "GETVLOGCOUNT"
 #define APP_COMMAND_STRING_SET_SENSORS_USED           "SETSENSORSUSED"
 #define APP_COMMAND_STRING_GET_SENSORS_USED           "GETSENSORSUSED"
+#define APP_COMMAND_STRING_GET_RAMP_TIME              "GETRAMPTIME"
+#define APP_COMMAND_STRING_SET_RAMP_TIME              "SETRAMPTIME"
+#define APP_COMMAND_STRING_PAUSE_RAMP                 "PAUSERAMP"
+#define APP_COMMAND_STRING_START_RAMP                 "STARTRAMP"
+
+#define GOLDRUSH_SERVER_MODE_STOPPED            0
+#define GOLDRUSH_SERVER_MODE_RAMP               1
+#define GOLDRUSH_SERVER_MODE_PAUSED             2
+#define GOLDRUSH_SERVER_MODE_MAIN               3
 
 
 struct ClientStatus {
@@ -118,6 +127,10 @@ struct ClientStatus {
 };
 
 int Server_Status = SERVER_STATUS_CODE_INIT;
+int GoldRush_Mode=GOLDRUSH_SERVER_MODE_STOPPED;
+long Ramp_Time,Ramp_End_Time;
+/*@ToDo: have to setup a sensor setup check*/
+
 
 void ProcessCommand(int ClientCount);
 
@@ -158,8 +171,7 @@ int TranssferCount, OldManVideoTime = 0;
 
 struct sigaction InputSigAction, ServerSigAction;
 int ServerSocketFileDiscriptor, PortNumber = 1234, ClientCount = 0, MaximumFileDiscriptorID, ReUseSocket = 1, ConnectedClients = 0;
-int SimulationStartTime, RunStartTime = 0, PreviousTransmitTime, PreviousTime, PreviousLocation = 0, location,previous_location,location_difference=0;
-int cutoff_end_pulse=595,cutoff_velocity=45;
+int SimulationStartTime, RunStartTime = 0, PreviousTransmitTime, PreviousTime, PreviousLocation = 0, location,previous_location;
 struct sockaddr_in ServerAddress;
 struct timeval Timer_Variable;
 struct itimerval ServerTimer, InputTimer;
@@ -401,7 +413,8 @@ void ResetInput() {
     InputPinLogPointer[2] = 0;
     InputPinLogPointer[3] = 0;
     location = 0;
-    location_difference=0;
+    GoldRush_Mode=GOLDRUSH_SERVER_MODE_STOPPED;
+//    location_difference=0;
     previous_location=0;
     while (location != -10) {
 
@@ -517,8 +530,8 @@ void Enable_Input_Lines(int new_sensor_settings){
             Sensors_Used_Count++;
         }
     }
-    cutoff_end_pulse=600*Sensors_Used_Count/4;
-    cutoff_velocity=44*Sensors_Used_Count/4;
+//    cutoff_end_pulse=600*Sensors_Used_Count/4;
+//    cutoff_velocity=44*Sensors_Used_Count/4;
     if(Sensors_Used&0x01){
         digitalWrite(INPUTPIN_ENABLE1,LOW);
     }else{
@@ -843,13 +856,13 @@ int main(int argc, char *argv[]) {
                     }
                     break;
                 case SERVER_STATUS_CODE_RUNNING_RUN_GR:
-                    if(previous_location<cutoff_end_pulse){
-                        Velocity = location - Velocity_Storage[Velocity_Storage_Pointer]-location_difference;
-                        if(Velocity>cutoff_velocity){
-                            location_difference+=(Velocity-cutoff_velocity);
-                        }
-                    }
-                    location-=location_difference;
+//                    if(previous_location<cutoff_end_pulse){
+//                        Velocity = location - Velocity_Storage[Velocity_Storage_Pointer]-location_difference;
+//                        if(Velocity>cutoff_velocity){
+//                            location_difference+=(Velocity-cutoff_velocity);
+//                        }
+//                    }
+//                    location-=location_difference;
                     if(Velocity_Correction_Mode==1){
                         distance += GoldRushVelocityIncrement * (location-previous_location);
                     }else{
@@ -1559,6 +1572,32 @@ void ProcessCommand(int ClientCount) {
             }
             Printed[23]=1;
             sprintf(Clients[ClientCount].Response, "Sensors_Used=%d\n", Sensors_Used);
+        }else if (strcmp(Command,APP_COMMAND_STRING_GET_RAMP_TIME)==0){
+                
+            if(Printed[24]==1){
+                continue;
+            }
+            Printed[24]=1;
+            sprintf(Clients[ClientCount].Response, "Ramp_Time=%l\n", Ramp_Time);
+        }else if (strcmp(Command,APP_COMMAND_STRING_SET_RAMP_TIME)==0){
+                
+            if(Printed[25]==1){
+                continue;
+            }
+            Printed[25]=1;
+            sprintf(Clients[ClientCount].Response, "Ramp_Time=%l\n", Ramp_Time);
+            if (i <= strlen(Clients[ClientCount].Command)) {
+                long new_ramp_time;
+                sscanf(Clients[ClientCount].Command + i, "%s", Parameters[0]);
+                i += strlen(Parameters[0]) + 1;
+                sscanf(Parameters[0],"%d",&new_ramp_time);
+                if(new_ramp_time<0){
+                    sprintf(Clients[ClientCount].Response, "Ramp time cannot be negative %l\n",new_ramp_time);
+                }else{
+                    sprintf(Clients[ClientCount].Response, "Setting Ramp time to %l\n",new_ramp_time);
+                    Ramp_Time=new_ramp_time;
+                }
+            }
         }
         Clients[ClientCount].Response += strlen(Clients[ClientCount].Response);
         if(strlen(Clients[ClientCount].Response)>1000){
