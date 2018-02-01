@@ -7,6 +7,7 @@ DEPENDENCIES=""
 START_DIRECTORY=$(pwd)
 #echo "Installing required dependencies"
 #sudo apt-get install $DEPENDENCIES
+cp ../dist/Debug/GNU-Linux/track12456 gold_rush
 echo "Deleting old services folder"
 sudo rm -r /usr/src/$SERVICE_FOLDER
 echo "Creating new services folder"

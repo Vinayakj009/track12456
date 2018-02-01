@@ -107,11 +107,19 @@
 #define APP_COMMAND_STRING_SET_RAMP_TIME              "SETRAMPTIME"
 #define APP_COMMAND_STRING_PAUSE_RAMP                 "PAUSERAMP"
 #define APP_COMMAND_STRING_START_RAMP                 "STARTRAMP"
+#define APP_COMMAND_STRING_SET_RAMP_END_DISTANCE      "SRED"
+#define APP_COMMAND_STRING_GET_RAMP_END_DISTANCE      "GRED"
 
 #define GOLDRUSH_SERVER_MODE_STOPPED            0
 #define GOLDRUSH_SERVER_MODE_RAMP               1
 #define GOLDRUSH_SERVER_MODE_PAUSED             2
 #define GOLDRUSH_SERVER_MODE_MAIN               3
+
+/* the code sends 0 for normal operation.
+ * -1 for ramp mode
+ * -2 for pause mode
+ * -3 for Stop mode
+ */
 
 
 struct ClientStatus {
@@ -128,7 +136,8 @@ struct ClientStatus {
 
 int Server_Status = SERVER_STATUS_CODE_INIT;
 int GoldRush_Mode=GOLDRUSH_SERVER_MODE_STOPPED;
-long Ramp_Time,Ramp_End_Time;
+long Ramp_Time=40000,Ramp_End_Time;
+float Ramp_End_Distance=0,Ramp_Ignore_Distance;
 /*@ToDo: have to setup a sensor setup check*/
 
 
@@ -559,7 +568,7 @@ int main(int argc, char *argv[]) {
     char InputString[600];
     int iterator;
     long Time_Delay_For_Select=millis();
-    delay(10000);
+//    delay(10000);
     Server_Status = SERVER_STATUS_CODE_RUNNING_SIM_SG_RESET;
 
     for (iterator = 1; iterator < argc; iterator++) {
@@ -572,7 +581,7 @@ int main(int argc, char *argv[]) {
             iterator++;
             if (strcmp(argv[iterator], "GR") == 0) {
                 Server_Status = SERVER_STATUS_CODE_RUNNING_RUN_GR_RESET;
-                distance = 0;
+                distance = -3;
             } else if (strcmp(argv[iterator], "SG") == 0) {
                 Server_Status = SERVER_STATUS_CODE_RUNNING_RUN_SG_RESET;
                 distance = -2;
@@ -584,7 +593,7 @@ int main(int argc, char *argv[]) {
             iterator++;
             if (strcmp(argv[iterator], "GR") == 0) {
                 Server_Status = SERVER_STATUS_CODE_RUNNING_SIM_GR_RESET;
-                distance = 0;
+                distance = -3;
             } else if (strcmp(argv[iterator], "SG") == 0) {
                 Server_Status = SERVER_STATUS_CODE_RUNNING_SIM_SG_RESET;
                 distance = -2;
@@ -856,13 +865,6 @@ int main(int argc, char *argv[]) {
                     }
                     break;
                 case SERVER_STATUS_CODE_RUNNING_RUN_GR:
-//                    if(previous_location<cutoff_end_pulse){
-//                        Velocity = location - Velocity_Storage[Velocity_Storage_Pointer]-location_difference;
-//                        if(Velocity>cutoff_velocity){
-//                            location_difference+=(Velocity-cutoff_velocity);
-//                        }
-//                    }
-//                    location-=location_difference;
                     if(Velocity_Correction_Mode==1){
                         distance += GoldRushVelocityIncrement * (location-previous_location);
                     }else{
@@ -883,6 +885,33 @@ int main(int argc, char *argv[]) {
         if ((distance == -1)&&(micros() > OldManVideoTime)&&((Server_Status == SERVER_STATUS_CODE_RUNNING_RUN_SG) || (Server_Status == SERVER_STATUS_CODE_RUNNING_SIM_SG))) {
             distance = 0;
         }
+        if(Server_Status==SERVER_STATUS_CODE_RUNNING_RUN_GR){
+        switch(GoldRush_Mode){
+            case GOLDRUSH_SERVER_MODE_STOPPED:
+                if(location<1){
+                    distance=-3;
+                break;
+                }
+                Ramp_End_Time=millis()+Ramp_Time;
+                GoldRush_Mode=GOLDRUSH_SERVER_MODE_RAMP;
+            case GOLDRUSH_SERVER_MODE_PAUSED:
+                distance=-2;
+                break;
+            case GOLDRUSH_SERVER_MODE_RAMP:
+                if(Ramp_End_Time>millis())
+                {
+                    distance=-1;
+                    break;
+                }
+                GoldRush_Mode=GOLDRUSH_SERVER_MODE_MAIN;
+//                Ramp_Ignore_Distance=distance;
+                distance=Ramp_End_Distance;
+            case GOLDRUSH_SERVER_MODE_MAIN:
+//                distance=distance+Ramp_End_Distance-Ramp_Ignore_Distance;
+                break;
+                  
+        }
+        }
         connectedVR = 0;
         totaltransmits++;
         Timer_Variable.tv_sec = 0;
@@ -893,38 +922,39 @@ int main(int argc, char *argv[]) {
         FD_SET(ServerSocketFileDiscriptor, &ReadFileDiscriptors);
         FD_SET(ServerSocketFileDiscriptor, &ExceptFileDiscriptors);
         MaximumFileDiscriptorID = ServerSocketFileDiscriptor;
-        if((Server_Status==SERVER_STATUS_CODE_RUNNING_RUN_GR)&&(Velocity_Correction_Mode==1)){
-            
-            Velocity = location - Velocity_Storage[Velocity_Storage_Pointer];
-            Velocity_Storage[Velocity_Storage_Pointer] = location;
-            Velocity_Storage_Pointer = (Velocity_Storage_Pointer + 1) % 25;
-            
-            if (Velocity_Graph_Pointer < Velocity_Graph_Size - 1) {
-                float Correction_Velocity=Velocity_Graph[1][Velocity_Graph_Pointer];
-                Correction_Velocity=Correction_Velocity*((float)Sensors_Used_Count)/4.0;
-                if (((Velocity > Correction_Velocity)
-                        &&(Velocity_Comparison[Velocity_Graph_Pointer] == 1))
-                        || ((Velocity < Correction_Velocity)
-                        &&(Velocity_Comparison[Velocity_Graph_Pointer] == 0))) {
-                    float next_location_count = -1, error,ratio;
-                    error = distance - (Velocity_Graph[0][Velocity_Graph_Pointer]);
-                    error = Velocity_Error_Feedback_Weight * error;
-                    next_location_count = ((Velocity_Graph[0][Velocity_Graph_Pointer + 1] + error - Velocity_Graph[0][Velocity_Graph_Pointer]) / GoldRushIncrement);
-                    GoldRushVelocityIncrement = (Velocity_Graph[0][Velocity_Graph_Pointer + 1] - Velocity_Graph[0][Velocity_Graph_Pointer]) / next_location_count;
-                    ratio=GoldRushIncrement/GoldRushIncrement;
-                    if(ratio>Velocity_Correction_Limit_Upper){
-                        GoldRushVelocityIncrement=Velocity_Correction_Limit_Upper*GoldRushIncrement;
-                    }else if(ratio<Velocity_Correction_Limit_Lower){
-                        GoldRushVelocityIncrement=Velocity_Correction_Limit_Lower*GoldRushIncrement;
-                    }else{
-                        Velocity_Graph_Calibration_Storage[Velocity_Graph_Pointer]=location;
+        if(Server_Status == SERVER_STATUS_CODE_RUNNING_RUN_GR)
+            if ((Server_Status == SERVER_STATUS_CODE_RUNNING_RUN_GR)&&(Velocity_Correction_Mode == 1)) {
+                if ((Velocity_Storage_Pointer < 1) || (GoldRush_Mode == GOLDRUSH_SERVER_MODE_MAIN)) {
+                    Velocity = location - Velocity_Storage[Velocity_Storage_Pointer];
+                    Velocity_Storage[Velocity_Storage_Pointer] = location;
+                    Velocity_Storage_Pointer = (Velocity_Storage_Pointer + 1) % 25;
+                    if (Velocity_Graph_Pointer < Velocity_Graph_Size - 1) {
+                        float Correction_Velocity = Velocity_Graph[1][Velocity_Graph_Pointer];
+                        Correction_Velocity = Correction_Velocity * ((float) Sensors_Used_Count) / 4.0;
+                        if (((Velocity > Correction_Velocity)
+                                &&(Velocity_Comparison[Velocity_Graph_Pointer] == 1))
+                                || ((Velocity < Correction_Velocity)
+                                &&(Velocity_Comparison[Velocity_Graph_Pointer] == 0))) {
+                            float next_location_count = -1, error, ratio;
+                            error = distance - (Velocity_Graph[0][Velocity_Graph_Pointer]);
+                            error = Velocity_Error_Feedback_Weight * error;
+                            next_location_count = ((Velocity_Graph[0][Velocity_Graph_Pointer + 1] + error - Velocity_Graph[0][Velocity_Graph_Pointer]) / GoldRushIncrement);
+                            GoldRushVelocityIncrement = (Velocity_Graph[0][Velocity_Graph_Pointer + 1] - Velocity_Graph[0][Velocity_Graph_Pointer]) / next_location_count;
+                            ratio = GoldRushIncrement / GoldRushIncrement;
+                            if (ratio > Velocity_Correction_Limit_Upper) {
+                                GoldRushVelocityIncrement = Velocity_Correction_Limit_Upper*GoldRushIncrement;
+                            } else if (ratio < Velocity_Correction_Limit_Lower) {
+                                GoldRushVelocityIncrement = Velocity_Correction_Limit_Lower*GoldRushIncrement;
+                            } else {
+                                Velocity_Graph_Calibration_Storage[Velocity_Graph_Pointer] = location;
+                            }
+                            Velocity_Graph_Pointer++;
+                        }
                     }
-                    Velocity_Graph_Pointer++;
                 }
+                PrintVelocityReadings(location, Velocity, distance);
             }
-            PrintVelocityReadings(location, Velocity, distance);
-        }
-        
+
         bzero(OutputDataBuffer, 256);
         sprintf(OutputDataBuffer, "%d\n", (int) distance);
         sprintf(ConnectedAddresses, "");
@@ -1080,9 +1110,10 @@ int main(int argc, char *argv[]) {
                     if(strcmp(Clients[ClientCount].Command,"AT")!=0){
                         sprintf(OutData,"%s",Clients[ClientCount].Command);
                     }
-                    sprintf(Clients[ClientCount].Command,"%s\n%s\n%s\n%s",OutData,APP_COMMAND_STRING_GET_STATUS,
+                    sprintf(Clients[ClientCount].Command,"%s\n%s\n%s\n%s\n%s",OutData,APP_COMMAND_STRING_GET_STATUS,
                             APP_COMMAND_STRING_GET_LOCATION,
-                            APP_COMMAND_STRING_GET_CONNECTED_CLIENTS);
+                            APP_COMMAND_STRING_GET_CONNECTED_CLIENTS,
+                            APP_COMMAND_STRING_GET_RAMP_TIME);
                     sprintf(OutData,"");
                 }
             }
@@ -1199,7 +1230,7 @@ void ProcessCommand(int ClientCount) {
                 }
             } else if (strcmp(Parameters[0], "RUN") == 0) {
                 if (strcmp(Parameters[1], "GR") == 0) {
-                    distance = 0;
+                    distance = -3;
                     Server_Status = SERVER_STATUS_CODE_RUNNING_RUN_GR_RESET;
                     sprintf(Clients[ClientCount].Response, "Resetting count and distance and running Gold rush sensor\n");
                     ResetInput();
@@ -1246,7 +1277,7 @@ void ProcessCommand(int ClientCount) {
                     Server_Status = SERVER_STATUS_CODE_RUNNING_RUN_GR;
                     InitVelocityGraph();
                     Velocity=0;
-                    distance = 0;
+                    distance = -3;
                     ResetInput();
                     sprintf(Clients[ClientCount].Response, "Started GoldRush sensor\n");
                     break;
@@ -1578,25 +1609,97 @@ void ProcessCommand(int ClientCount) {
                 continue;
             }
             Printed[24]=1;
-            sprintf(Clients[ClientCount].Response, "Ramp_Time=%l\n", Ramp_Time);
+            if(GoldRush_Mode==GOLDRUSH_SERVER_MODE_RAMP){
+                sprintf(Clients[ClientCount].Response, "Ramp will end in %ld ms\n", Ramp_End_Time-millis());
+            }else{
+                sprintf(Clients[ClientCount].Response, "Ramp_Time=%ld\n", Ramp_Time);
+            }
         }else if (strcmp(Command,APP_COMMAND_STRING_SET_RAMP_TIME)==0){
                 
             if(Printed[25]==1){
                 continue;
             }
             Printed[25]=1;
-            sprintf(Clients[ClientCount].Response, "Ramp_Time=%l\n", Ramp_Time);
             if (i <= strlen(Clients[ClientCount].Command)) {
                 long new_ramp_time;
                 sscanf(Clients[ClientCount].Command + i, "%s", Parameters[0]);
                 i += strlen(Parameters[0]) + 1;
                 sscanf(Parameters[0],"%d",&new_ramp_time);
                 if(new_ramp_time<0){
-                    sprintf(Clients[ClientCount].Response, "Ramp time cannot be negative %l\n",new_ramp_time);
+                    sprintf(Clients[ClientCount].Response, "Ramp time cannot be negative %ld\n",new_ramp_time);
                 }else{
-                    sprintf(Clients[ClientCount].Response, "Setting Ramp time to %l\n",new_ramp_time);
+                    sprintf(Clients[ClientCount].Response, "Setting Ramp time to %ld\n",new_ramp_time);
                     Ramp_Time=new_ramp_time;
                 }
+            }
+        }else if (strcmp(Command,APP_COMMAND_STRING_SET_RAMP_END_DISTANCE)==0){
+                
+            if(Printed[26]==1){
+                continue;
+            }
+            Printed[26]=1;
+            if (i <= strlen(Clients[ClientCount].Command)) {
+                long new_ramp_time;
+                sscanf(Clients[ClientCount].Command + i, "%s", Parameters[0]);
+                i += strlen(Parameters[0]) + 1;
+                sscanf(Parameters[0],"%d",&new_ramp_time);
+                if(new_ramp_time<0){
+                    sprintf(Clients[ClientCount].Response, "Ramp end distance cannot be negative %ld\n",new_ramp_time);
+                }else{
+                    sprintf(Clients[ClientCount].Response, "Setting Ramp End distance to %ld\n",new_ramp_time);
+                    Ramp_End_Distance=new_ramp_time;
+                }
+            }
+        }else if (strcmp(Command,APP_COMMAND_STRING_GET_RAMP_END_DISTANCE)==0){
+                
+            if(Printed[27]==1){
+                continue;
+            }
+            Printed[27]=1;
+            sprintf(Clients[ClientCount].Response, "Ramp End Distance=%ld\n", Ramp_End_Distance);
+        }else if (strcmp(Command,APP_COMMAND_STRING_PAUSE_RAMP )==0){
+                
+            if(Printed[28]==1){
+                continue;
+            }
+            Printed[28]=1;
+            switch(GoldRush_Mode){
+                case GOLDRUSH_SERVER_MODE_STOPPED:
+                sprintf(Clients[ClientCount].Response, "Cannot pause, ride not started");
+                break;
+                case GOLDRUSH_SERVER_MODE_PAUSED:
+                sprintf(Clients[ClientCount].Response, "System already paused");
+                break;
+                case GOLDRUSH_SERVER_MODE_RAMP:
+                    GoldRush_Mode=GOLDRUSH_SERVER_MODE_PAUSED;
+                    Ramp_End_Time=Ramp_End_Time-millis();
+                sprintf(Clients[ClientCount].Response, "Pausing system");
+                break;
+                case GOLDRUSH_SERVER_MODE_MAIN:
+                sprintf(Clients[ClientCount].Response, "Cannot pause, ride has left");
+                break;
+            }
+        }else if (strcmp(Command,APP_COMMAND_STRING_START_RAMP )==0){
+                
+            if(Printed[29]==1){
+                continue;
+            }
+            Printed[29]=1;
+            switch(GoldRush_Mode){
+                case GOLDRUSH_SERVER_MODE_STOPPED:
+                sprintf(Clients[ClientCount].Response, "Cannot unpause , ride not started");
+                break;
+                case GOLDRUSH_SERVER_MODE_PAUSED:
+                GoldRush_Mode=GOLDRUSH_SERVER_MODE_RAMP; 
+                Ramp_End_Time=Ramp_End_Time+millis();
+                sprintf(Clients[ClientCount].Response, "Unpausing system");
+                break;
+                case GOLDRUSH_SERVER_MODE_RAMP:
+                sprintf(Clients[ClientCount].Response, "System already unpaused");
+                break;
+                case GOLDRUSH_SERVER_MODE_MAIN:
+                sprintf(Clients[ClientCount].Response, "Cannot pause, ride has left");
+                break;
             }
         }
         Clients[ClientCount].Response += strlen(Clients[ClientCount].Response);
