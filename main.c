@@ -26,9 +26,9 @@
 #define WRITE_BLOCK_RETRY_COUNT     2
 
 #define INPUTPIN1   0
-#define INPUTPIN2   2
-#define INPUTPIN3   3
-#define INPUTPIN4   4
+#define INPUTPIN2   1
+#define INPUTPIN3   2
+#define INPUTPIN4   3
 
 
 #define INPUTPIN_ENABLE1   21
@@ -137,7 +137,7 @@ struct ClientStatus {
 int Server_Status = SERVER_STATUS_CODE_INIT;
 int GoldRush_Mode=GOLDRUSH_SERVER_MODE_STOPPED;
 long Ramp_Time=40000,Ramp_End_Time;
-float Ramp_End_Distance=0,Ramp_Ignore_Distance;
+float Ramp_End_Distance=105482,Ramp_Ignore_Distance;
 /*@ToDo: have to setup a sensor setup check*/
 
 
@@ -924,10 +924,10 @@ int main(int argc, char *argv[]) {
         MaximumFileDiscriptorID = ServerSocketFileDiscriptor;
         if(Server_Status == SERVER_STATUS_CODE_RUNNING_RUN_GR)
             if ((Server_Status == SERVER_STATUS_CODE_RUNNING_RUN_GR)&&(Velocity_Correction_Mode == 1)) {
-                if ((Velocity_Storage_Pointer < 1) || (GoldRush_Mode == GOLDRUSH_SERVER_MODE_MAIN)) {
                     Velocity = location - Velocity_Storage[Velocity_Storage_Pointer];
                     Velocity_Storage[Velocity_Storage_Pointer] = location;
                     Velocity_Storage_Pointer = (Velocity_Storage_Pointer + 1) % 25;
+                if ((Velocity_Graph_Pointer < 1) || (GoldRush_Mode == GOLDRUSH_SERVER_MODE_MAIN)) {
                     if (Velocity_Graph_Pointer < Velocity_Graph_Size - 1) {
                         float Correction_Velocity = Velocity_Graph[1][Velocity_Graph_Pointer];
                         Correction_Velocity = Correction_Velocity * ((float) Sensors_Used_Count) / 4.0;
@@ -1656,7 +1656,7 @@ void ProcessCommand(int ClientCount) {
                 continue;
             }
             Printed[27]=1;
-            sprintf(Clients[ClientCount].Response, "Ramp End Distance=%ld\n", Ramp_End_Distance);
+            sprintf(Clients[ClientCount].Response, "Ramp End Distance=%f\n", Ramp_End_Distance);
         }else if (strcmp(Command,APP_COMMAND_STRING_PAUSE_RAMP )==0){
                 
             if(Printed[28]==1){
