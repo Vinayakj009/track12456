@@ -939,7 +939,7 @@ int main(int argc, char *argv[]) {
                             error = distance - (Velocity_Graph[0][Velocity_Graph_Pointer]);
                             error = Velocity_Error_Feedback_Weight * error;
                             next_location_count = ((Velocity_Graph[0][Velocity_Graph_Pointer + 1] + error - Velocity_Graph[0][Velocity_Graph_Pointer]) / GoldRushIncrement);
-                            GoldRushVelocityIncrement = (Velocity_Graph[0][Velocity_Graph_Pointer + 1] - Velocity_Graph[0][Velocity_Graph_Pointer]) / next_location_count;
+                            GoldRushVelocityIncrement = (Velocity_Graph[0][Velocity_Graph_Pointer + 1] - Velocity_Graph[0][Velocity_Graph_Pointer]) / next_location_count;                            
                             ratio = GoldRushIncrement / GoldRushIncrement;
                             if (ratio > Velocity_Correction_Limit_Upper) {
                                 GoldRushVelocityIncrement = Velocity_Correction_Limit_Upper*GoldRushIncrement;
@@ -948,6 +948,7 @@ int main(int argc, char *argv[]) {
                             } else {
                                 Velocity_Graph_Calibration_Storage[Velocity_Graph_Pointer] = location;
                             }
+                            printspecial(0, "Velocity point detected, Velocity Point=%d, location=%d, distance=%f, VIncrement=%f, Increment=%f\n", Velocity_Graph_Pointer,location,distance,GoldRushVelocityIncrement,GoldRushIncrement);
                             Velocity_Graph_Pointer++;
                         }
                     }
@@ -1207,10 +1208,12 @@ void ProcessCommand(int ClientCount) {
                 sscanf(Clients[ClientCount].Command + i, "%s", Parameters[0]);
                 i += strlen(Parameters[0]) + 1;
                 if (i <= strlen(Clients[ClientCount].Command)) {
-                    sscanf(Clients[ClientCount].Command + i, "%s", Parameters[1]);
+                    sscanf(Clients[ClientCount].Command
+                            + i, "%s", Parameters[1]);
                     i += strlen(Parameters[1]) + 1;
                 }
             }
+            printspecial(0,"Received Reset Command count=%d, distance=%f\n",location,distance);
             if (strcmp(Parameters[0], "SIM") == 0) {
                 if (strcmp(Parameters[1], "GR") == 0) {
                     distance = 0;
