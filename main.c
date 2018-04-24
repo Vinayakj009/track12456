@@ -64,6 +64,7 @@
 #define SG_TRACK_FILE_PATH                      "SalimGharTrackCount.txt"
 #define GR_VELOCITY_GRAPH_PATH                  "GoldRushVelocity.txt"
 #define SENSOR_CALIBRATION_LOG_PATH             "CalibrationLogValues.txt"
+#define RAMP_SETTINGS_STORAGE_FILE              "RampSettingsStoragefile.txt"
 
 
 
@@ -114,6 +115,9 @@
 #define GOLDRUSH_SERVER_MODE_RAMP               1
 #define GOLDRUSH_SERVER_MODE_PAUSED             2
 #define GOLDRUSH_SERVER_MODE_MAIN               3
+
+#define DEFAULT_RAMP_END_TIME           40000
+#define DEFAULT_RAMP_END_DISTANCE       105482
 
 /* the code sends 0 for normal operation.
  * -1 for ramp mode
@@ -530,6 +534,38 @@ int ReadSimValues(char *path, int *SimValues) {
     return 0;
 }
 
+void StoreRampEndSettings(){
+    char *path=RAMP_SETTINGS_STORAGE_FILE;
+    FILE *Writer;
+    Writer = fopen(path, "w");
+    if ((Ramp_End_Distance < 0) || (Ramp_Time < 0)) {
+        printspecial(0,"Errornous Ramp settings Ramd End Distance=%ld Ramp End Time =%ld, resetting to defaults",Ramp_End_Distance,Ramp_Time);
+        Ramp_Time = DEFAULT_RAMP_END_TIME;
+        Ramp_End_Distance = DEFAULT_RAMP_END_DISTANCE;
+    }
+    printspecial(0,"Storing Ramp settings Ramp End Distance=%f Ramp End Time =%ld\n",Ramp_End_Distance,Ramp_Time);
+    fprintf(Writer, "Ramp End Time = %ld\nRamp End Distance = %f\n", Ramp_Time, Ramp_End_Distance);
+    fclose(Writer);
+    
+}
+
+void ReadRampSettings(){
+    char *path=RAMP_SETTINGS_STORAGE_FILE;
+    FILE *Reader;
+    if(stat(path,&FileCheckStruct) == 0){
+        printspecial(0, "Reading Ramp settings from %s\n",path);
+        Reader=fopen(path,"r");
+        fscanf(Reader,"Ramp End Time = %ld\nRamp End Distance = %f\n",&Ramp_Time,&Ramp_End_Distance);
+        fclose(Reader);
+    }else{
+        
+        printspecial(0, "Could not find ramp settings file %s, using defaults\n",path);
+        Ramp_Time=DEFAULT_RAMP_END_TIME;
+        Ramp_End_Distance=DEFAULT_RAMP_END_DISTANCE;
+    }
+    StoreRampEndSettings();
+}
+
 void Enable_Input_Lines(int new_sensor_settings){
     int i;
     Sensors_Used=new_sensor_settings;
@@ -612,6 +648,8 @@ int main(int argc, char *argv[]) {
 
     printspecial(0, "reading MM values\n");
     MITMNOV = ReadSimValues(MM_SIMULATION_FILE_PATH, MITMSimValues);
+    
+    ReadRampSettings();
 
     LoadTrackCount();
     
@@ -1145,8 +1183,8 @@ int main(int argc, char *argv[]) {
 
 void ProcessCommand(int ClientCount) {
     int i = 0;
-    uint8_t Printed[30];
-    bzero(Printed,30);
+    uint8_t Printed[60];
+    bzero(Printed,60);
     char Command[256], Parameters[2][256];
     Clients[ClientCount].ResponseAvailable = 1;
     Clients[ClientCount].Response = Clients[ClientCount].ResponseBuffer;
@@ -1633,6 +1671,7 @@ void ProcessCommand(int ClientCount) {
                 }else{
                     sprintf(Clients[ClientCount].Response, "Setting Ramp time to %ld\n",new_ramp_time);
                     Ramp_Time=new_ramp_time;
+                    StoreRampEndSettings();
                 }
             }
         }else if (strcmp(Command,APP_COMMAND_STRING_SET_RAMP_END_DISTANCE)==0){
@@ -1651,6 +1690,7 @@ void ProcessCommand(int ClientCount) {
                 }else{
                     sprintf(Clients[ClientCount].Response, "Setting Ramp End distance to %ld\n",new_ramp_time);
                     Ramp_End_Distance=new_ramp_time;
+                    StoreRampEndSettings();
                 }
             }
         }else if (strcmp(Command,APP_COMMAND_STRING_GET_RAMP_END_DISTANCE)==0){

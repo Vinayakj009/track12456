@@ -13,6 +13,8 @@
         <gdb_interceptlist>
           <gdbinterceptoptions gdb_all="false" gdb_unhandled="true" gdb_unexpected="true"/>
         </gdb_interceptlist>
+        <gdb_signals>
+        </gdb_signals>
         <gdb_options>
           <DebugOptions>
           </DebugOptions>
@@ -25,8 +27,16 @@
       <runprofile version="9">
         <runcommandpicklist>
           <runcommandpicklistitem>"${OUTPUT_PATH}"</runcommandpicklistitem>
+          <runcommandpicklistitem>"${OUTPUT_PATH} -pwd "</runcommandpicklistitem>
+          <runcommandpicklistitem>${OUTPUT_PATH} -pwd </runcommandpicklistitem>
+          <runcommandpicklistitem>${OUTPUT_PATH} -pwd ~/GolrRush</runcommandpicklistitem>
+          <runcommandpicklistitem>${OUTPUT_PATH} -pwd ~/GolrRush -portnumber </runcommandpicklistitem>
+          <runcommandpicklistitem>${OUTPUT_PATH} -pwd ~/GolrRush -portnumber 1456 </runcommandpicklistitem>
+          <runcommandpicklistitem>${OUTPUT_PATH} -pwd ~/GolrRush -portnumber 1456 -RUN GR</runcommandpicklistitem>
+          <runcommandpicklistitem>/bin${OUTPUT_PATH} -pwd ~/GolrRush -portnumber 1456 -RUN GR</runcommandpicklistitem>
+          <runcommandpicklistitem>/usr/bin/sudo ${OUTPUT_PATH} -pwd ~/GolrRush -portnumber 1456 -RUN GR</runcommandpicklistitem>
         </runcommandpicklist>
-        <runcommand>"${OUTPUT_PATH}"</runcommand>
+        <runcommand>/usr/bin/sudo ${OUTPUT_PATH} -pwd ~/GolrRush -portnumber 1456 -RUN GR</runcommand>
         <rundir></rundir>
         <buildfirst>true</buildfirst>
         <terminal-type>0</terminal-type>
